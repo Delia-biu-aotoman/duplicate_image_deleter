@@ -3,6 +3,7 @@ from math import ceil
 from io import BytesIO
 import json
 from os.path import join, getsize
+import os
 
 import gi
 gi.require_version('Gtk', '3.0')
@@ -160,6 +161,11 @@ class Handler:
         self.page_count = len(self.scores)
 
         self.set_page_number(self.page_num)
+        try:
+            os.remove(join(self.folder,right_file))
+        except FileNotFoundError as e:
+            print(e)
+            pass
 
     def onDeleteLeft(self, *args):
         if self.cancel_deletion():
@@ -175,6 +181,11 @@ class Handler:
         self.page_count = len(self.scores)
 
         self.set_page_number(self.page_num)
+        try:
+            os.remove(join(self.folder,left_file))
+        except FileNotFoundError as e:
+            print(e)
+            pass
 
     def onDeleteWindow(self, *args):
         Gtk.main_quit(*args)
