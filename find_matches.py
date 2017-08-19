@@ -2,9 +2,8 @@ import sys
 from os import listdir
 from os.path import isfile, join
 from pprint import pprint
-from PIL import ImageTk, Image
+from PIL import Image
 import time
-import tkinter as tk
 from math import ceil
 
 from similarity import load_image, patch_stats, hist_similarity, show

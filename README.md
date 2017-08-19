@@ -1,3 +1,18 @@
+# Installation
+
+This program was written and tested with python3 on Ubuntu, other platforms may not work.
+
+Most requirements can be installed with
+
+```
+pip install -r requirements.txt
+```
+
+In addition, you must install the system python3 gtk library with:
+```
+sudo apt install python3-gi
+```
+
 # Usage
 
 python find_matches.py "/path/to/target/folder"
@@ -6,6 +21,7 @@ Once the program runs, it will show pairs of similar images, in order
 of how similar it judges them to be.
 
 # Interpreting Distance Between Images
+
 As a rule of thumb, "Distance between images" will be 0.0 for identical
 images, 0 to 50 after a resize or conversion that changed a few pixels,
 50 to 100 for barely noticeable differences.
