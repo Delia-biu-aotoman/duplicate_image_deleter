@@ -95,17 +95,29 @@ class Handler:
         left_file = self.scores[self.page_num][1]
         right_file = self.scores[self.page_num][2]
 
-        # read right
-        image2 = self.builder.get_object("image2")
-        path2 = join(self.folder, right_file)
-        pixbuf2, stats2 = load_thumbnail(path2)
-        image2.set_from_pixbuf(pixbuf2)
+        try:
+            # read right
+            image2 = self.builder.get_object("image2")
+            path2 = join(self.folder, right_file)
+            pixbuf2, stats2 = load_thumbnail(path2)
+            image2.set_from_pixbuf(pixbuf2)
+        except FileNotFoundError as e:
+            print("Expected right file is missing")
+            print(e)
+            # TODO: just remove right file.
+            return
 
-        # read left
-        image1 = self.builder.get_object("image1")
-        path1 = join(self.folder, left_file)
-        pixbuf1, stats1 = load_thumbnail(path1)
-        image1.set_from_pixbuf(pixbuf1)
+        try:
+            # read left
+            image1 = self.builder.get_object("image1")
+            path1 = join(self.folder, left_file)
+            pixbuf1, stats1 = load_thumbnail(path1)
+            image1.set_from_pixbuf(pixbuf1)
+        except FileNotFoundError as e:
+            print("Expected left file is missing")
+            print(e)
+            # TODO: just remove left file.
+            return
 
         # update right
         right_description = "%s\nWidth: %d\nHeight: %d\nFilesize: %d\n" % (
@@ -128,6 +140,7 @@ class Handler:
         left_buffer.set_text(left_description)
         textview1 = self.builder.get_object("textview1")
         textview1.set_buffer(left_buffer)
+
 
     def page_changed(self, *args):
         adjustment = self.builder.get_object("adjustment1")
@@ -161,13 +174,14 @@ class Handler:
         return result
 
     def onDeleteRight(self, *args):
+        #TODO: Disable navigation until this finishes to prevent races
         if self.cancel_deletion():
             return
 
         right_file = self.scores[self.page_num][2]
         temp = []
         for res in self.scores:
-            if res[2] != right_file:
+            if res[1] != right_file and res[2] != right_file:
                 temp.append(res)
 
         self.scores = temp
@@ -181,13 +195,14 @@ class Handler:
             pass
 
     def onDeleteLeft(self, *args):
+        #TODO: Disable navigation until this finishes to prevent races
         if self.cancel_deletion():
             return
 
         left_file = self.scores[self.page_num][1]
         temp = []
         for res in self.scores:
-            if res[1] != left_file:
+            if res[1] != left_file and res[2] != left_file:
                 temp.append(res)
 
         self.scores = temp
