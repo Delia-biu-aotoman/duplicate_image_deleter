@@ -9,7 +9,7 @@ def load_image(filename):
     return im
 
 def hist_similarity(h1, h2):
-    return np.linalg.norm(h1.flatten() - h2.flatten())
+    return np.linalg.norm(h1 - h2)
 
 def patch_stats(im):
     x_buckets = 10

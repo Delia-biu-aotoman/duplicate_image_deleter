@@ -34,26 +34,26 @@ def timing(f):
 def get_image_files(folder):
     image_files = []
     filecount = len(listdir(folder))
-    i = 1
+    #~ i = 1
     for f in listdir(folder):
         #~ sys.stdout.write("\rChecking file %d of %d" % (i, filecount))
+        fullpath = join(folder, f)
+        if is_image(fullpath):
+            image_files.append(fullpath)
 
-        if is_image(join(folder, f)):
-            image_files.append(f)
-
-        i = i + 1
-    #~ print()
+        #~ i = i + 1
     return image_files
 
 @timing
-def get_summaries(folder, files):
+def get_summaries(files):
     summaries = {}
+    numfiles = len(files)
     for i in range(0, len(files)):
         try:
-            sys.stdout.write("\rProcessing File %d of %d" % (i+1, len(files)))
+            sys.stdout.write("\rProcessing File %d of %d" % (i+1, numfiles))
             sys.stdout.flush()
             f = files[i]
-            summary = patch_stats(load_image(join(folder, f)))
+            summary = patch_stats(load_image(f))
             summaries[f] = summary
         except OSError as e:
             pass
@@ -82,8 +82,8 @@ def get_scores(files, summaries):
 files = get_image_files(folder)
 numfiles = len(files)
 print("There are %d files to process" % (numfiles))
-summaries = get_summaries(folder, files)
+summaries = get_summaries(files)
 files = good_files(files, summaries)
 scores = get_scores(files, summaries)
-display(folder, scores)
+display(scores)
 

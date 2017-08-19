@@ -72,11 +72,10 @@ class DialogExample(Gtk.Dialog):
         self.show_all()
 
 class Handler:
-    def __init__(self, folder, scores, builder):
+    def __init__(self, scores, builder):
         self.page_num = 0
         self.page_count = len(scores)
         self.scores = scores
-        self.folder = folder
         self.builder = builder
         adjustment = self.builder.get_object("adjustment1")
         adjustment.set_property("upper", self.page_count)
@@ -98,8 +97,7 @@ class Handler:
         try:
             # read right
             image2 = self.builder.get_object("image2")
-            path2 = join(self.folder, right_file)
-            pixbuf2, stats2 = load_thumbnail(path2)
+            pixbuf2, stats2 = load_thumbnail(right_file)
             image2.set_from_pixbuf(pixbuf2)
         except FileNotFoundError as e:
             print("Expected right file is missing")
@@ -110,8 +108,7 @@ class Handler:
         try:
             # read left
             image1 = self.builder.get_object("image1")
-            path1 = join(self.folder, left_file)
-            pixbuf1, stats1 = load_thumbnail(path1)
+            pixbuf1, stats1 = load_thumbnail(left_file)
             image1.set_from_pixbuf(pixbuf1)
         except FileNotFoundError as e:
             print("Expected left file is missing")
@@ -189,7 +186,7 @@ class Handler:
 
         self.set_page_number(self.page_num)
         try:
-            os.remove(join(self.folder,right_file))
+            os.remove(right_file)
         except FileNotFoundError as e:
             print(e)
             pass
@@ -210,7 +207,7 @@ class Handler:
 
         self.set_page_number(self.page_num)
         try:
-            os.remove(join(self.folder,left_file))
+            os.remove(left_file)
         except FileNotFoundError as e:
             print(e)
             pass
@@ -224,21 +221,14 @@ class Handler:
     def onRightClicked(self, *args):
         self.set_page_number(self.page_num+1)
 
-def display(folder, scores):
+def display(scores):
     builder = Gtk.Builder()
     builder.add_from_file("duplicate_deleter.glade")
 
-    handler = Handler(folder, scores, builder)
+    handler = Handler(scores, builder)
     builder.connect_signals(handler)
 
     window = builder.get_object("window1")
     window.show_all()
 
     Gtk.main()
-
-if __name__ == "__main__":
-    with open("data.json", "r") as input:
-        data = json.loads(input.read())
-    folder = data["folder"]
-    scores = data["scores"]
-    display(folder, scores)
