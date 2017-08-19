@@ -37,7 +37,12 @@ def load_thumbnail(filename):
     loader.write(contents)
     pixbuf = loader.get_pixbuf()
     loader.close()
-    stats = "Width: {} pixels\nHeight: {} pixels\nFile size: {} bytes".format(img_orig.size[0],img_orig.size[1], filesize)
+
+    stats = {
+        "width": img_orig.size[0],
+        "height": img_orig.size[1],
+        "filesize": filesize
+    }
     return (pixbuf, stats)
 
 def split_long_names(filename):
@@ -90,29 +95,39 @@ class Handler:
         left_file = self.scores[self.page_num][1]
         right_file = self.scores[self.page_num][2]
 
-        # update right
+        # read right
         image2 = self.builder.get_object("image2")
         path2 = join(self.folder, right_file)
         pixbuf2, stats2 = load_thumbnail(path2)
         image2.set_from_pixbuf(pixbuf2)
 
-        stats2 = "%s\n%s\n" % (right_file, stats2)
-        right_description = Gtk.TextBuffer()
-        right_description.set_text(stats2)
-        textview2 = self.builder.get_object("textview2")
-        textview2.set_buffer(right_description)
-
-        # update left
+        # read left
         image1 = self.builder.get_object("image1")
         path1 = join(self.folder, left_file)
         pixbuf1, stats1 = load_thumbnail(path1)
         image1.set_from_pixbuf(pixbuf1)
 
-        stats1 = "%s\n%s\n" % (left_file, stats1)
-        left_description = Gtk.TextBuffer()
-        left_description.set_text(stats1)
+        # update right
+        right_description = "%s\nWidth: %d\nHeight: %d\nFilesize: %d\n" % (
+            right_file, stats2["width"], stats2["height"], stats2["filesize"])
+        if(stats2["filesize"] > stats1["filesize"]):
+            right_description = right_description + "(Larger)\n"
+
+        right_buffer = Gtk.TextBuffer()
+        right_buffer.set_text(right_description)
+        textview2 = self.builder.get_object("textview2")
+        textview2.set_buffer(right_buffer)
+
+        # update left
+        left_description = "%s\nWidth: %d\nHeight: %d\nFilesize: %d\n" % (
+            left_file, stats1["width"], stats1["height"], stats1["filesize"])
+        if(stats1["filesize"] > stats2["filesize"]):
+            left_description = left_description + "(Larger)\n"
+
+        left_buffer = Gtk.TextBuffer()
+        left_buffer.set_text(left_description)
         textview1 = self.builder.get_object("textview1")
-        textview1.set_buffer(left_description)
+        textview1.set_buffer(left_buffer)
 
     def page_changed(self, *args):
         adjustment = self.builder.get_object("adjustment1")
@@ -137,10 +152,8 @@ class Handler:
 
         result = None
         if response == Gtk.ResponseType.OK:
-            print("The OK button was clicked")
             result = False
         elif response == Gtk.ResponseType.CANCEL:
-            print("The Cancel button was clicked")
             result = True
 
         dialog.destroy()
