@@ -18,12 +18,9 @@ folder = sys.argv[1]
 print("Searching " + folder)
 
 def is_image(path):
-    try:
-        im = Image.open(path)
-        im.verify()
-        return True
-    except OSError:
-        return False
+    # Perform mimetype check for speed?
+    return True
+
 
 def timing(f):
     def wrap(*args):
@@ -34,35 +31,44 @@ def timing(f):
         return ret
     return wrap
 
-@timing
+#~ @timing
 def get_image_files(folder):
     image_files = []
     filecount = len(listdir(folder))
     i = 1
     for f in listdir(folder):
-        sys.stdout.write("\rChecking file %d of %d" % (i, filecount))
+        #~ sys.stdout.write("\rChecking file %d of %d" % (i, filecount))
 
         if is_image(join(folder, f)):
             image_files.append(f)
 
         i = i + 1
-    print()
+    #~ print()
     return image_files
 
 @timing
 def get_summaries(folder, files):
     summaries = {}
     for i in range(0, len(files)):
-        sys.stdout.write("\rProcessing File %d of %d" % (i+1, len(files)))
-        sys.stdout.flush()
-        f = files[i]
-        summary = patch_stats(load_image(join(folder, f)))
-        summaries[f] = summary
+        try:
+            sys.stdout.write("\rProcessing File %d of %d" % (i+1, len(files)))
+            sys.stdout.flush()
+            f = files[i]
+            summary = patch_stats(load_image(join(folder, f)))
+            summaries[f] = summary
+        except OSError as e:
+            pass
+            #~ print()
+            #~ print(e)
     print()
     return summaries
 
-@timing
-def get_scores(numfiles, summaries):
+def good_files(files, summaries):
+    return [f for f in summaries if f in summaries]
+
+#~ @timing
+def get_scores(files, summaries):
+    numfiles = len(summaries)
     scores = []
     for i in range(0, numfiles):
         for j in range(i+1, numfiles):
@@ -76,8 +82,9 @@ def get_scores(numfiles, summaries):
 
 files = get_image_files(folder)
 numfiles = len(files)
-print("There are: %d files to process" % (numfiles))
+print("There are %d files to process" % (numfiles))
 summaries = get_summaries(folder, files)
-scores = get_scores(numfiles, summaries)
+files = good_files(files, summaries)
+scores = get_scores(files, summaries)
 display(folder, scores)
 
