@@ -4,16 +4,6 @@ This displays all similar images in a folder and its subfolders.
 It also shows information like which image is larger and their resolution
 so you can decide whether to delete one, neither, or both of them.
 
-# Performance
-
-This is optimized to be as fast as possible and can detect all duplicates
-in a collection of >40K images on a typical hard drive in under 200 seconds.
-For a more reasonable collection of 1000 images, it will detect all duplicates
-in 7 seconds.
-
-After the first time it is run with a folder, it will cache some results,
-which makes it roughly 10 times faster.
-
 # Usage
 
 ```./find_matches.py "/path/to/target/folder"```
@@ -39,6 +29,16 @@ make
 ```
 
 The program additionally requires a CPU with AVX support. Any intel processor made after 2008 and any AMD processor post 2011 should support this.
+
+# Performance
+
+This is optimized to be as fast as possible and can detect all duplicates
+in a collection of 40K images on a typical hard drive in 170 seconds on the first run.
+For a more reasonable collection of 1000 images, it will detect all duplicates
+in 7 seconds. After the first time it is run with a folder, it will cache some results,
+which makes searching for duplicates again later almost instant after a few images are added.
+
+With the same collection of 40K images, Digikam took 1100 seconds to detect duplicates on the first run.
 
 # Interpreting Distance Between Images
 
