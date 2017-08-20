@@ -46,7 +46,7 @@ inline float norm(const float* x, const float* y)
 }
 
 void do_work(std::vector<match>* matches, const float* data, int thread_num, int num_files, int arr_size){
-    float max_dist = 300;
+    const float max_dist = 300;
     float dist;
     for(int i = thread_num; i < num_files; i = i + NUM_THREADS){
         for(int j = i + 1; j < num_files; ++j){
@@ -61,7 +61,7 @@ void do_work(std::vector<match>* matches, const float* data, int thread_num, int
     }
 }
 
-void search(float* data, int num_files, int arr_size)
+void search(const float* data, int num_files, int arr_size)
 {
     std::vector<match>* results[NUM_THREADS];
     std::thread pool[NUM_THREADS];
@@ -77,16 +77,21 @@ void search(float* data, int num_files, int arr_size)
         t.join();
     }
 
+    std::ofstream output("matches.dat");
+
     for(int t = 0; t < NUM_THREADS; ++t){
         std::cout << "number of results in thread " << t << " = " << results[t]->size() << std::endl;
+        for(auto const& m: *results[t]){
+            output << m.distance << "," << m.left << "," << m.right << std::endl;
+        }
         delete(results[t]);
     }
+    output.close();
 }
 
 int main()
 {
-    const char* filename = "huge.dat";
-    //~ const char* filename = "danbooru.dat";
+    const char* filename = "summaries.dat";
 
     int arr_size, num_files;
     std::ifstream infile(filename);
@@ -97,9 +102,6 @@ int main()
         std::cout <<"Invalid file" << std::endl;
         std::exit(EXIT_FAILURE);
     }
-
-    std::cout << "num_files = " << num_files << std::endl;
-    std::cout << "Arr size = " << arr_size << std::endl;
 
     float* data = new float[num_files * arr_size * sizeof(float)];
     char delim;
@@ -114,4 +116,6 @@ int main()
 
     search(data, num_files, arr_size);
     delete[] data;
+
+    std::exit(0);
 }

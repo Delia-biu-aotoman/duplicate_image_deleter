@@ -10,9 +10,12 @@ import json
 import numpy as np
 from joblib import Parallel, delayed
 import multiprocessing
+import dbmanager
 
 from similarity import *
 from display_results import display
+
+cleanup = False
 
 def is_image(path):
     # Perform mimetype check for speed?
@@ -45,98 +48,54 @@ def file_to_summary(f):
     except OSError as e:
         return None
 
-def get_score_line(files, summaries, i):
-    max_score = 300
-    numfiles = len(files)
-    scores = []
-
-    for j in range(i+1, numfiles):
-        f1 = files[i]
-        f2 = files[j]
-        score = np.linalg.norm(summaries[f1] - summaries[f2])
-        if score < max_score:
-            scores.append((score, f1, f2))
-
-    return scores
+@timing
+def get_cached_summaries(files):
+    return dbmanager.load(files)
 
 @timing
-def get_scores(files, summaries, num_threads=4):
-    numfiles = len(files)
-    scores = []
-
-    all_scores = Parallel(n_jobs=num_threads)(delayed(get_score_line)(files, summaries, i) for i in range(0, numfiles))
-    for score_set in all_scores:
-        scores = scores + score_set
-    del(all_scores)
-
-    print("\n%d pairs of images are similar and will be displayed" % (len(scores)))
-    scores.sort(key=lambda x: x[0])
-    return scores
+def write_cached_summaries(new_files, summaries, bad_files):
+    dbmanager.update(new_files, summaries, bad_files)
 
 @timing
-def parallel_get_summaries(files, summaries, num_threads=16):
+def parallel_get_summaries(files, num_threads=16):
+    print("Reading summary cache")
+    summaries, bad_files = get_cached_summaries(files)
+
     numfiles = len(files)
 
-    summary_arr = Parallel(n_jobs=num_threads)(delayed(file_to_summary)(f) for f in files)
+    new_files = []
+    for f in files:
+        if not f in summaries and not f in bad_files:
+            new_files.append(f)
 
-    for i in range(0, numfiles):
-        summary = summary_arr[i]
-        if summary is not None:
-            filename = files[i]
+    new_summary_arr = []
+    if len(new_files) > 0:
+        print("Summarizing new files")
+        new_summary_arr = Parallel(n_jobs=num_threads)(delayed(file_to_summary)(f) for f in new_files)
+
+    summarized_files = []
+    for i in range(0, len(new_summary_arr)):
+        summary = new_summary_arr[i]
+        filename = new_files[i]
+        if summary is None:
+            bad_files.add(filename)
+        else:
+            summarized_files.append(filename)
             summaries[filename] = summary
+
+    print("Updating summary cache")
+    write_cached_summaries(summarized_files, summaries, bad_files)
+    return summaries
 
 def good_files(files, summaries):
     return [f for f in files if f in summaries]
 
-def get_cache():
-    try:
-        processed = {}
-        with open("cache.json", "r") as input:
-            numpy_summaries = {}
-            unprocessed = json.loads(input.read())
-            if "summaries" in unprocessed:
-                for filename, summary in unprocessed["summaries"].items():
-                    #~ numpy_summaries[filename] = np.array(summary, dtype="uint8")
-                    numpy_summaries[filename] = np.array(summary)
-
-                processed["summaries"] = numpy_summaries
-            else:
-                processed["summaries"] = {}
-        return processed
-    except FileNotFoundError as e:
-        return {"summaries":{}}
-
-def write_cache(data):
-    generic_summaries = {}
-    for filename, summary in data["summaries"].items():
-        generic_summaries[filename] = summary.tolist()
-
-    processed = {"summaries": generic_summaries}
-
-    with open("cache.json", "w") as output:
-        output.write(json.dumps(processed))
-
-if __name__ == "__main__":
-    if(len(sys.argv) < 2):
-        print("Pass the name of a folder")
-        sys.exit(1)
-
-    data = get_cache();
-
-    folder = sys.argv[1]
-    print("Searching " + folder)
-
-    files = recursive_get_image_files(folder)
-    numfiles = len(files)
-    print("There are %d files to process" % (numfiles))
-
-    summaries = data["summaries"]
-    #~ parallel_get_summaries(files, summaries)
-    files = good_files(files, summaries)
-    # Turn this part alone into C
+@timing
+def get_scores(files, summaries):
+    # clean up files if they exist
 
     # Transform the summaries dict into an array for C++ ease
-    with open("temp.dat", "w") as output:
+    with open("summaries.dat", "w") as output:
         # Write number of entries
         output.write(str(len(files)) + "\n")
 
@@ -150,9 +109,51 @@ if __name__ == "__main__":
             summary_s = ",".join(summary_strings)
             output.write(summary_s + "\n")
 
-    #~ scores = get_scores(files, summaries)
+    os.system("./fast_match");
 
-    #~ display(scores)
+    if(cleanup):
+        try:
+            os.remove("summaries.dat")
+        except:
+            pass
+
+    scores = []
+    with open("matches.dat", "r") as input:
+        for line in input:
+            score_set = line.split(",")
+            distance = float(score_set[0])
+            left_num = int(score_set[1])
+            right_num = int(score_set[2])
+            scores.append([distance, files[left_num], files[right_num]])
+
+    if(cleanup):
+        try:
+            os.remove("matches.dat")
+        except:
+            pass
+
+    print("\n%d pairs of images are similar and will be displayed" % (len(scores)))
+    scores.sort(key=lambda x: x[0])
+    return scores
+
+if __name__ == "__main__":
+    if(len(sys.argv) < 2):
+        print("Pass the name of a folder")
+        sys.exit(1)
+
+    folder = sys.argv[1]
+    print("Searching " + folder)
+
+    files = recursive_get_image_files(folder)
+    numfiles = len(files)
+    print("There are %d files to process" % (numfiles))
+
+    summaries = parallel_get_summaries(files)
+    files = good_files(files, summaries)
+
+    scores = get_scores(files, summaries)
+
+    display(scores)
 
 
 

@@ -84,6 +84,7 @@ class Handler:
         description = Gtk.TextBuffer()
         description.set_text("Distance between images: %.2f" % (score))
         textview3 = self.builder.get_object("textview3")
+        textview3.set_property("justification", Gtk.Justification.CENTER)
         textview3.set_buffer(description)
 
 
@@ -137,8 +138,7 @@ class Handler:
 
     def page_changed(self, *args):
         adjustment = self.builder.get_object("adjustment1")
-        self.page_num = int(adjustment.get_property("value")) -1
-        self.update_page()
+        self.set_page_number( int(adjustment.get_property("value")) -1)
 
     def set_page_number(self, num):
         self.page_num = num
@@ -220,6 +220,12 @@ class Handler:
 
     def onRightClicked(self, *args):
         self.set_page_number(self.page_num+1)
+
+    def onIgnoreClicked(self, *args):
+        pass
+
+    def onDeleteBothClicked(self, *args):
+        pass
 
 def display(scores):
     builder = Gtk.Builder()

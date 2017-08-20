@@ -1,6 +1,6 @@
 __pycache__
-*.json
-data
 *~
 *.dat
 *.out
+*.db
+fast_match
