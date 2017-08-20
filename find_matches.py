@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import sys
 from os import listdir
 import os
@@ -15,12 +16,11 @@ import dbmanager
 from similarity import *
 from display_results import display
 
-cleanup = False
+cleanup = True
 
 def is_image(path):
     # Perform mimetype check for speed?
     return True
-
 
 def timing(f):
     def wrap(*args):
@@ -47,6 +47,13 @@ def file_to_summary(f):
         return patch_stats(load_image(f), f)
     except OSError as e:
         return None
+
+def cleanup_file(filename):
+    if cleanup:
+        try:
+            os.remove(filename)
+        except FileNotFoundError as e:
+            pass
 
 @timing
 def get_cached_summaries(files):
@@ -109,13 +116,11 @@ def get_scores(files, summaries):
             summary_s = ",".join(summary_strings)
             output.write(summary_s + "\n")
 
-    os.system("./fast_match");
+    if os.system("./fast_match") != 0:
+        print("Failed to run fast_match")
+        sys.exit(1)
 
-    if(cleanup):
-        try:
-            os.remove("summaries.dat")
-        except:
-            pass
+    cleanup_file("summaries.dat")
 
     scores = []
     with open("matches.dat", "r") as input:
@@ -126,11 +131,7 @@ def get_scores(files, summaries):
             right_num = int(score_set[2])
             scores.append([distance, files[left_num], files[right_num]])
 
-    if(cleanup):
-        try:
-            os.remove("matches.dat")
-        except:
-            pass
+    cleanup_file("matches.dat")
 
     print("\n%d pairs of images are similar and will be displayed" % (len(scores)))
     scores.sort(key=lambda x: x[0])
@@ -138,8 +139,14 @@ def get_scores(files, summaries):
 
 if __name__ == "__main__":
     if(len(sys.argv) < 2):
-        print("Pass the name of a folder")
+        print("Usage: Pass the path to a folder as the first argument")
         sys.exit(1)
+
+    if not os.path.exists("fast_match"):
+        ret = os.system("make")
+        if ret != 0:
+            print("Could not compile fast_match, check dependencies")
+            sys.exit(1)
 
     folder = sys.argv[1]
     print("Searching " + folder)
