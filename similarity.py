@@ -3,7 +3,30 @@ from PIL import Image
 import numpy as np
 import math
 from math import floor
+import signal
+import errno
+from functools import wraps
+import os
 
+def timeout(seconds=10, error_message=os.strerror(errno.ETIME)):
+    def decorator(func):
+        def _handle_timeout(signum, frame):
+            raise TimeoutError(error_message)
+
+        def wrapper(*args, **kwargs):
+            signal.signal(signal.SIGALRM, _handle_timeout)
+            signal.alarm(seconds)
+            try:
+                result = func(*args, **kwargs)
+            finally:
+                signal.alarm(0)
+            return result
+
+        return wraps(func)(wrapper)
+
+    return decorator
+
+@timeout(10)
 def load_image(filename):
     # Load with alpha channel to prevent possible error on transparent images.
     im = misc.imread(filename, flatten=False, mode='RGBA')
@@ -51,9 +74,6 @@ def patch_stats(im, filename):
             scale = 1/patch_pixels
 
             patch = im[x0:x1, y0:y1]
-            #~ r_mean = floor(np.mean(patch[:,:,0]))
-            #~ g_mean = floor(np.mean(patch[:,:,1]))
-            #~ b_mean = floor(np.mean(patch[:,:,2]))
 
             r_mean = np.mean(patch[:,:,0])
             g_mean = np.mean(patch[:,:,1])
@@ -62,20 +82,6 @@ def patch_stats(im, filename):
 
             cmeans = cmeans + [r_mean, g_mean, b_mean]
 
-    #~ arr_of_hist = np.array(cmeans, dtype="uint8").flatten()
     arr_of_hist = np.array(cmeans).flatten()
     return arr_of_hist
-
-def closeness(path1, path2):
-    im1 = load_image(path1)
-    im2 = load_image(path2)
-    h1 = patch_stats(im1)
-    h2 = patch_stats(im2)
-    return hist_similarity(h1, h2)
-
-def grayscale(im):
-    return np.mean(im[:,:,0:3],2)
-
-def show(image):
-    Image.fromarray(image).show()
 

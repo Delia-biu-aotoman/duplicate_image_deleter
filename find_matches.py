@@ -12,15 +12,11 @@ import numpy as np
 from joblib import Parallel, delayed
 import multiprocessing
 import dbmanager
-
+from stat import *
 from similarity import *
 from display_results import display
 
 cleanup = True
-
-def is_image(path):
-    # Perform mimetype check for speed?
-    return True
 
 def timing(f):
     def wrap(*args):
@@ -33,19 +29,28 @@ def timing(f):
 
 @timing
 def recursive_get_image_files(folder):
-    image_files = []
+    possible_image_files = []
 
+    all_file_len = 0
     for root, dirs, files in os.walk(folder):
         for f in files:
+            all_file_len = all_file_len + 1
             fullpath = join(root, f)
-            image_files.append(fullpath)
+            if os.path.isfile(fullpath):
+                possible_image_files.append(fullpath)
 
-    return image_files
+    print("all_file_len",all_file_len)
+    print("normal file len",len(possible_image_files))
+    return possible_image_files
 
-def file_to_summary(f):
+def get_summary(f):
     try:
         return patch_stats(load_image(f), f)
     except OSError as e:
+        #~ print("OSError accessing ",f)
+        return None
+    except TimeoutError as e:
+        print("Timeout accessing ",f)
         return None
 
 def cleanup_file(filename):
@@ -64,7 +69,19 @@ def write_cached_summaries(new_files, summaries, bad_files):
     dbmanager.update(new_files, summaries, bad_files)
 
 @timing
-def parallel_get_summaries(files, num_threads=16):
+def parallel_get_summaries(new_files, num_threads=16):
+    new_summary_arr = []
+    if len(new_files) > 0:
+        try:
+            print("Summarizing new files")
+            new_summary_arr = Parallel(n_jobs=num_threads)(delayed(get_summary)(f) for f in new_files)
+        except KeyboardInterrupt as e:
+            # Allow cancelling easily if something hangs.
+            print("Got a keyboard interrupt, quitting")
+            raise KeyboardInterrupt("QUIT")
+    return new_summary_arr
+
+def get_summaries(files):
     print("Reading summary cache")
     summaries, bad_files = get_cached_summaries(files)
 
@@ -75,10 +92,7 @@ def parallel_get_summaries(files, num_threads=16):
         if not f in summaries and not f in bad_files:
             new_files.append(f)
 
-    new_summary_arr = []
-    if len(new_files) > 0:
-        print("Summarizing new files")
-        new_summary_arr = Parallel(n_jobs=num_threads)(delayed(file_to_summary)(f) for f in new_files)
+    new_summary_arr = parallel_get_summaries(new_files)
 
     summarized_files = []
     for i in range(0, len(new_summary_arr)):
@@ -155,11 +169,9 @@ if __name__ == "__main__":
     numfiles = len(files)
     print("There are %d files to process" % (numfiles))
 
-    summaries = parallel_get_summaries(files)
+    summaries = get_summaries(files)
     files = good_files(files, summaries)
-
     scores = get_scores(files, summaries)
-
     display(scores)
 
 
