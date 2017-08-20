@@ -4,6 +4,7 @@ from io import BytesIO
 import json
 from os.path import join, getsize
 import os
+import time
 
 import gi
 gi.require_version('Gtk', '3.0')
@@ -45,18 +46,6 @@ def load_thumbnail(filename):
     }
     return (pixbuf, stats)
 
-def split_long_names(filename):
-    split_len = 80
-    parts = []
-    while(len(filename) > 0):
-        if(len(filename) > 80):
-            parts.append(filename[:80])
-            filename = filename[80:]
-        else:
-            parts.append(filename)
-            break
-    return "\n(Continued) ".join(parts)
-
 class DialogExample(Gtk.Dialog):
     def __init__(self, parent):
         Gtk.Dialog.__init__(self, "My Dialog", parent, 0,
@@ -83,6 +72,13 @@ class Handler:
         self.update_page()
 
     def update_page(self):
+        if(len(self.scores) == 0):
+            description = Gtk.TextBuffer()
+            description.set_text("No similar pairs of images found")
+            textview3 = self.builder.get_object("textview3")
+            textview3.set_buffer(description)
+            return
+
         score = self.scores[self.page_num][0]
 
         description = Gtk.TextBuffer()
@@ -171,6 +167,8 @@ class Handler:
         return result
 
     def onDeleteRight(self, *args):
+        if(len(self.scores) == 0):
+            return
         #TODO: Disable navigation until this finishes to prevent races
         if self.cancel_deletion():
             return
@@ -192,6 +190,8 @@ class Handler:
             pass
 
     def onDeleteLeft(self, *args):
+        if(len(self.scores) == 0):
+            return
         #TODO: Disable navigation until this finishes to prevent races
         if self.cancel_deletion():
             return
