@@ -4,3 +4,4 @@ __pycache__
 *.out
 *.db
 fast_match
+NOTES.md
