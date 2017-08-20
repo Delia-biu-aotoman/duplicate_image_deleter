@@ -19,6 +19,9 @@ def get_summary_size():
     return x_buckets*y_buckets*3
 
 def patch_stats(im, filename):
+    if(len(im.shape) != 3):
+        return None
+
     x_high = im.shape[0]
     y_high = im.shape[1]
 
