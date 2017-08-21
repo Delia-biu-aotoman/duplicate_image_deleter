@@ -11,42 +11,6 @@ import gi
 gi.require_version('Gtk', '3.0')
 from gi.repository import Gtk, GdkPixbuf
 
-def load_thumbnail(filename):
-    img_orig = Image.open(filename)
-    filesize = getsize(filename)
-    # Find the side requiring the greatest resize:
-
-    size = (600, 600)
-    x_size = size[0]
-    y_size = size[1]
-    x_resize_ratio = img_orig.size[0] / x_size
-    y_resize_ratio = img_orig.size[1] / y_size
-
-    if(x_resize_ratio > y_resize_ratio):
-        y_size = ceil(y_size * (y_resize_ratio / x_resize_ratio))
-    else:
-        x_size = ceil(x_size * (x_resize_ratio / y_resize_ratio))
-
-    img = img_orig.resize((x_size, y_size), Image.ANTIALIAS)
-    canvas = Image.new("RGB", size, "white")
-    canvas.paste(img, ((size[0]-x_size)//2, (size[1]-y_size)//2))
-
-    buff = BytesIO()
-    canvas.save(buff, 'ppm')
-    contents = buff.getvalue()
-    buff.close()
-    loader = GdkPixbuf.PixbufLoader.new_with_type('pnm')
-    loader.write(contents)
-    pixbuf = loader.get_pixbuf()
-    loader.close()
-
-    stats = {
-        "width": img_orig.size[0],
-        "height": img_orig.size[1],
-        "filesize": filesize
-    }
-    return (pixbuf, stats)
-
 class DialogExample(Gtk.Dialog):
     def __init__(self, parent):
         Gtk.Dialog.__init__(self, "My Dialog", parent, 0,
