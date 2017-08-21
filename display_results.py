@@ -69,9 +69,6 @@ class Handler:
         self.page_count = len(scores)
         self.scores = scores
         self.builder = builder
-        #~ adjustment = self.builder.get_object("adjustment1")
-        #~ adjustment.set_property("upper", self.page_count)
-
         self.update_page()
 
     def update_page(self):
@@ -89,7 +86,6 @@ class Handler:
         textview3 = self.builder.get_object("textview3")
         textview3.set_property("justification", Gtk.Justification.CENTER)
         textview3.set_buffer(description)
-
 
         left_file = self.scores[self.page_num][1]
         right_file = self.scores[self.page_num][2]
@@ -234,20 +230,16 @@ class Handler:
     def page_num_edited(self, *args):
         page_num_str = self.page_entry.get_text()
         try:
-            new_num = int(page_num_str) - 1
-            if(new_num >= 0 and new_num < self.page_count):
-                print('new num = ',new_num)
-                self.page_num = new_num
-                self.update_page()
+            self.page_num = int(page_num_str) - 1
 
-            #~ if(self.page_num >= self.page_count):
-                #~ self.page_num = self.page_count - 1
-                #~ self.page_entry.set_text(str(self.page_count))
-            #~ elif (self.page_num < 0):
-                #~ self.page_num = 0
-                #~ self.page_entry.set_text(str(1))
-            #~ else:
-                #~ self.update_page()
+            if(self.page_num >= self.page_count):
+                self.page_num = self.page_count - 1
+                self.page_entry.set_text(str(self.page_count))
+            elif (self.page_num < 0):
+                self.page_num = 0
+                self.page_entry.set_text(str(1))
+            else:
+                self.update_page()
         except:
             pass
 
