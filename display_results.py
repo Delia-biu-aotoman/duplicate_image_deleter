@@ -234,16 +234,20 @@ class Handler:
     def page_num_edited(self, *args):
         page_num_str = self.page_entry.get_text()
         try:
-            self.page_num = int(page_num_str) - 1
-
-            if(self.page_num >= self.page_count):
-                self.page_num = self.page_count - 1
-                self.page_entry.set_text(str(self.page_count))
-            elif (self.page_num < 0):
-                self.page_num = 0
-                self.page_entry.set_text(str(1))
-            else:
+            new_num = int(page_num_str) - 1
+            if(new_num >= 0 and new_num < self.page_count):
+                print('new num = ',new_num)
+                self.page_num = new_num
                 self.update_page()
+
+            #~ if(self.page_num >= self.page_count):
+                #~ self.page_num = self.page_count - 1
+                #~ self.page_entry.set_text(str(self.page_count))
+            #~ elif (self.page_num < 0):
+                #~ self.page_num = 0
+                #~ self.page_entry.set_text(str(1))
+            #~ else:
+                #~ self.update_page()
         except:
             pass
 
