@@ -5,7 +5,8 @@ import json
 from os.path import join, getsize
 import os
 import time
-
+import sys
+from pprint import pprint
 import gi
 gi.require_version('Gtk', '3.0')
 from gi.repository import Gtk, GdkPixbuf
@@ -61,13 +62,15 @@ class DialogExample(Gtk.Dialog):
         self.show_all()
 
 class Handler:
-    def __init__(self, scores, builder):
+    def __init__(self, scores, builder, page_entry):
+        self.page_entry = page_entry
         self.page_num = 0
+        self.show_page_number()
         self.page_count = len(scores)
         self.scores = scores
         self.builder = builder
-        adjustment = self.builder.get_object("adjustment1")
-        adjustment.set_property("upper", self.page_count)
+        #~ adjustment = self.builder.get_object("adjustment1")
+        #~ adjustment.set_property("upper", self.page_count)
 
         self.update_page()
 
@@ -135,10 +138,9 @@ class Handler:
         textview1 = self.builder.get_object("textview1")
         textview1.set_buffer(left_buffer)
 
-
-    def page_changed(self, *args):
-        adjustment = self.builder.get_object("adjustment1")
-        self.set_page_number( int(adjustment.get_property("value")) -1)
+    def show_page_number(self):
+        new_page_str = str(self.page_num + 1)
+        self.page_entry.get_buffer().set_text(new_page_str, len(new_page_str))
 
     def set_page_number(self, num):
         self.page_num = num
@@ -147,8 +149,6 @@ class Handler:
         elif (self.page_num < 0):
             self.page_num = self.page_count - 1
 
-        adjustment = self.builder.get_object("adjustment1")
-        adjustment.set_property("value", self.page_num+1)
         self.update_page()
 
     def cancel_deletion(self):
@@ -183,6 +183,7 @@ class Handler:
         self.page_count = len(self.scores)
 
         self.set_page_number(self.page_num)
+        self.show_page_number()
         try:
             os.remove(right_file)
         except FileNotFoundError as e:
@@ -206,6 +207,7 @@ class Handler:
         self.page_count = len(self.scores)
 
         self.set_page_number(self.page_num)
+        self.show_page_number()
         try:
             os.remove(left_file)
         except FileNotFoundError as e:
@@ -217,9 +219,11 @@ class Handler:
 
     def onLeftClicked(self, *args):
         self.set_page_number(self.page_num-1)
+        self.show_page_number()
 
     def onRightClicked(self, *args):
         self.set_page_number(self.page_num+1)
+        self.show_page_number()
 
     def onIgnoreClicked(self, *args):
         pass
@@ -227,14 +231,65 @@ class Handler:
     def onDeleteBothClicked(self, *args):
         pass
 
+    def page_num_edited(self, *args):
+        page_num_str = self.page_entry.get_text()
+        try:
+            self.page_num = int(page_num_str) - 1
+
+            if(self.page_num >= self.page_count):
+                self.page_num = self.page_count - 1
+                self.page_entry.set_text(str(self.page_count))
+            elif (self.page_num < 0):
+                self.page_num = 0
+                self.page_entry.set_text(str(1))
+            else:
+                self.update_page()
+        except:
+            pass
+
+class MyEntry(Gtk.Entry, Gtk.Editable):
+    """
+    I wanted to make a text entry widget that only accepts numbers.
+    A spinbox was close, but I did not want to have the extra +- buttons
+    since they don't render right on a mac.
+    Therefore, I created this entry with an overridden do_insert_text
+    """
+
+    def __init__(self):
+        self.handler = None
+        super(MyEntry, self).__init__()
+
+    def do_insert_text(self, new_text, length, position):
+        # Inspiration for function from here:
+        # https://stackoverflow.com/questions/38815694/gtk-3-position-attribute-on-insert-text-signal-from-gtk-entry-is-always-0
+        try:
+            inserted_digit = int(new_text)
+            self.get_buffer().insert_text(position, new_text, length)
+            return position + length
+        except ValueError:
+            return position
+
+def create_numeric_entry(builder):
+    entry = MyEntry()
+    entry.set_property("visible", True)
+    entry.set_property("can_focus", True)
+
+    grid = builder.get_object("grid1")
+    grid.attach(entry, 3, 1, 1, 1)
+    return entry
+
 def display(scores):
     builder = Gtk.Builder()
     builder.add_from_file("duplicate_deleter.glade")
 
-    handler = Handler(scores, builder)
+    page_entry = create_numeric_entry(builder)
+    handler = Handler(scores, builder, page_entry)
     builder.connect_signals(handler)
 
+    handler_id = page_entry.connect("changed", handler.page_num_edited)
+
     window = builder.get_object("window1")
+
     window.show_all()
 
     Gtk.main()
