@@ -82,34 +82,30 @@ class AsyncImageLoader:
         self.done = True
 
 class ImageCache:
+    # Public Methods
     def __init__(self):
         self.lock = Lock()
         self.cache = {}
         # Most wanted at end for Pop, least wanted at start.
         self.wanted_files = []
         self.requested_at = {}
-        self.workers = set([])
 
+        self._cache_complete = True
         self.running = True
         self.fetcher = Thread(target=self.background_cacher, args=())
         self.fetcher.start()
 
-    # Interface
     def cache_for_later(self, new_paths):
         self.lock.acquire()
-
-        self._caching_done = False
+        self._cache_complete = False
         self.wanted_files = new_paths
         for path in new_paths:
             self.requested_at[path] = time.monotonic()
 
         self.lock.release()
 
-    def missing_files(self):
-        return len(self.wanted_files) > 0
-
     def cache_complete(self):
-        return len(self.wanted_files) == 0 and len(self.workers) == 0
+        return len(self.wanted_files) == 0 and self._cache_complete
 
     def load_image(self, path):
         data = None
@@ -130,8 +126,27 @@ class ImageCache:
         self.lock.release()
         self.fetcher.join()
 
-    # Manager
+    # Private Methods
+    def missing_files(self):
+        return len(self.wanted_files) > 0
+
     def background_cacher(self):
+        """
+        Inbound messages:
+            cache_for_later >> new_paths: array of string
+            load_image >> path
+            cache_complete
+            quit
+        Required Shared Variables:
+            message_exists (Set by client)
+            message_type
+            message_data (Can be string, or nothing)
+
+            result_exists (Set by this)
+
+        """
+
+        workers = set([])
         max_workers = 16
         current_workers = 0
         cache_size = 30
@@ -169,7 +184,13 @@ class ImageCache:
                     del self.cache[oldest_filename]
                     del self.requested_at[oldest_filename]
 
+            if len(workers) == 0 and not self.missing_files():
+                self._cache_complete = False
+
             self.lock.release()
+
+            if not self.missing_files():
+                time.sleep(0.05)
 
 from os.path import join
 
