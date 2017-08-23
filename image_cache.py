@@ -261,10 +261,9 @@ class ImageCache:
         print("Join successful")
 
 
-def test_canvas_loader():
-    p = "/home/avery/Downloads/temp/images"
-    files = os.listdir(p)
-    paths = [join(p, x) for x in files]
+def test_canvas_loader(folder):
+    files = os.listdir(folder)
+    paths = [join(folder, x) for x in files]
 
     loader = AsyncCanvasLoader()
 
@@ -281,10 +280,9 @@ def test_canvas_loader():
     print("Quitting")
     loader.quit()
 
-def test_image_cache():
-    p = "/home/avery/Downloads/temp/images"
-    files = os.listdir(p)
-    paths = [join(p, x) for x in files]
+def test_image_cache(folder):
+    files = os.listdir(folder)
+    paths = [join(folder, x) for x in files]
 
     wanted_size = 20
     max_cache_size = 30
@@ -303,22 +301,19 @@ def test_image_cache():
             print("Done caching")
             break
 
-    # Test uncached files
     for i in range(0, 10):
         t0 = time.time()
         res = c.fetch(paths[i])
-        #~ pprint(res)
         print("Fetch time cache:",time.time() - t0)
 
     for i in range(20, 30):
         t0 = time.time()
         res = c.fetch(paths[i])
-        #~ pprint(res)
         print("Fetch time uncached:",time.time() - t0)
 
     c.quit()
     print("All processing complete")
 
 if __name__ == "__main__":
-    test_image_cache()
-    #~ test_canvas_loader()
+    test_image_cache(sys.argv[1])
+    test_canvas_loader(sys.argv[1])
