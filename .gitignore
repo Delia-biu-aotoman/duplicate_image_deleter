@@ -5,3 +5,4 @@ __pycache__
 *.db
 fast_match
 NOTES.md
+error.log

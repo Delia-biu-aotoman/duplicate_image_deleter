@@ -8,95 +8,78 @@ import os
 import time
 import ctypes
 from pprint import pprint
+import traceback
+import sys
 
+# Since processes do not report exceptions to the main process,
+# it is necessary to log ALL exceptions.
+import logging
+formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
+logger = logging.getLogger('message_test')
+handler = logging.FileHandler('error.log')
+handler.setFormatter(formatter)
+logger.addHandler(handler)
 
-class MessageProcess:
-    def read_message(self):
-        while not self.in_flag.value:
-            time.sleep(0.1)
-        res = []
-        while len(self.in_args) > 0:
-            res.append(self.in_args.pop())
-        self.in_flag.value = False
-        return res
-
-    def send_data(self, messages):
-        for m in reversed(messages):
-            self.out_args.append(m)
-        self.out_flag.value = True
-        while self.out_flag.value:
-            time.sleep(0.1)
-
-    def send_data_nowait(self, messages):
-        for m in reversed(messages):
-            self.out_args.append(m)
-        self.out_flag.value = True
-
-class AsyncCanvasLoader(MessageProcess):
+class AsyncCanvasLoader:
     def __init__(self):
-        self.in_flag = mp.Value(ctypes.c_bool, False)
-        self.out_flag = mp.Value(ctypes.c_bool, False)
-
-        input_manager = mp.Manager()
-        self.in_args = input_manager.list()
-
-        output_manager = mp.Manager()
-        self.out_args = output_manager.list()
-
+        (self.reader, worker_writer) = mp.Pipe(duplex=False)
+        (worker_reader, self.writer) = mp.Pipe(duplex=False)
         self.idle_flag = mp.Value(ctypes.c_bool, True)
+        self.result_flag = mp.Value(ctypes.c_bool, False)
 
         self.loader = mp.Process(target=self.canvas_loader, args=(
-            self.out_args, self.out_flag, self.in_args, self.in_flag, self.idle_flag
+            worker_reader, worker_writer, self.idle_flag, self.result_flag
         ))
 
         self.loader.start()
 
-    # Public
+    # Public Interface
     def set_job(self, filename):
         self.idle_flag.value = False
-        self.send_data(["job", filename])
+        self.writer.send({"job":filename})
 
     def is_idle(self):
         return self.idle_flag.value
 
-    def get_results(self):
-        return self.read_message()
+    def has_result(self):
+        return self.result_flag.value
+
+    def get_result(self):
+        self.result_flag.value = False
+        self.idle_flag.value = True
+        self.writer.send({"fetch":0})
+        return self.reader.recv()
 
     def quit(self):
-        self.send_data(["quit"])
+        self.writer.send({"quit":0})
         self.loader.join()
 
-    # Private
-    def canvas_loader(self, in_args, in_flag, out_args, out_flag, idle_flag):
-        self.is_running = True
-        self.filename = None
-        self.in_flag = in_flag
-        self.in_args = in_args
-        self.out_args = out_args
-        self.out_flag = out_flag
+    # Async and Private
+    def canvas_loader(self, reader, writer, idle_flag, result_flag):
+        try:
+            self.is_running = True
+            filename = None
+            result = None
 
-        while self.is_running:
-            if self.in_flag.value:
-                self.process_input()
+            while self.is_running:
+                if reader.poll():
+                    msg = reader.recv()
+                    if "job" in msg:
+                        filename = msg["job"]
+                    elif "quit" in msg:
+                        self.is_running = False
+                    elif "fetch" in msg:
+                        writer.send(result)
+                    else:
+                        raise Exception("Unknown command:", msg)
 
-            if self.filename is not None:
-                result = self.load_image_data(self.filename)
-                self.filename = None
-                self.idle_flag.value = True
-                self.send_data(["result", result])
+                if filename is not None:
+                    result = self.load_image_data(filename)
+                    result_flag.value = True
+                    filename = None
 
-    def process_input(self):
-        data = self.read_message()
-        if len(data) > 0:
-            msg_type = data[0]
-            if msg_type == "quit":
-                self.is_running = False
-
-            elif msg_type == "job":
-                if len(data) > 1:
-                    self.filename = data[1]
-                else:
-                    raise ValueError("No paths given to fetch")
+        except Exception as e:
+            logger.error("".join(traceback.format_exception(*sys.exc_info())))
 
     def load_image_data(self, filename):
         try:
@@ -126,47 +109,45 @@ class AsyncCanvasLoader(MessageProcess):
             "width": img_orig.size[0],
             "height": img_orig.size[1],
             "filesize": filesize,
-            "canvas": canvas
+            "canvas": canvas,
+            "filename":filename
         }
         return result
 
-class BackgroundCacher(MessageProcess):
-    def __init__(self, in_args, in_flag, out_args, out_flag, max_workers, max_cache_size):
-        self.in_args = in_args
-        self.in_flag = in_flag
-        self.out_args = out_args
-        self.out_flag = out_flag
-        self.max_workers = max_workers
+class BackgroundCacher:
+    def __init__(self, reader, writer, num_workers, max_cache_size):
+        self.default_worker = AsyncCanvasLoader()
+        workers = []
+        for i in range(0, num_workers):
+            workers.append(AsyncCanvasLoader())
+
         self.max_cache_size = max_cache_size
+        self.writer = writer
+        self.reader = reader
 
         # Pending cache should have the most important file on the right
         # Since they are cached from right to left.
         self.pending_cache = []
-        self.workers = set([])
-        worker_count = 0
         self.requested_at = {}
         self.cache = {}
 
         self.running = True
+        self.active_workers = 0
 
         while self.running:
-            if in_flag.value:
+            if reader.poll():
                 self.process_input()
 
-            while worker_count < max_workers and len(self.pending_cache) > 0:
-                target = self.pending_cache.pop()
-                self.workers.add(AsyncCanvasLoader(target))
-                worker_count = worker_count + 1
+            for worker in workers:
+                if worker.is_idle() and len(self.pending_cache) > 0:
+                    self.active_workers = self.active_workers + 1
+                    target = self.pending_cache.pop()
+                    worker.set_job(target)
 
-            done_workers = []
-            for worker in self.workers:
-                if worker.is_done():
-                    done_workers.append(worker)
-
-            for worker in done_workers:
-                self.workers.remove(worker)
-                self.cache[worker.path()] = worker.get_image_list()
-                worker_count = worker_count - 1
+                if worker.has_result():
+                    res = worker.get_result()
+                    self.cache[res["filename"]] = res
+                    self.active_workers = self.active_workers - 1
 
             while len(self.cache) > self.max_cache_size:
                 oldest_time = float("inf")
@@ -178,139 +159,157 @@ class BackgroundCacher(MessageProcess):
                         oldest_filename = path
 
                 if oldest_filename is not None:
-                    pass
                     del self.cache[oldest_filename]
                     del self.requested_at[oldest_filename]
 
             if self.done_caching():
-                time.sleep(0.05)
+                time.sleep(0.0001)
 
-        for worker in self.workers:
+        for worker in workers:
             worker.quit()
 
-        del self.pending_cache
-        del self.workers
-        del self.requested_at
-        del self.cache
-        #~ time.sleep(2)
+        self.default_worker.quit()
         print("Done Cleanup..")
 
     def done_caching(self):
-        return len(self.pending_cache) == 0 and len(self.workers) == 0
+        return len(self.pending_cache) == 0 and self.active_workers == 0
 
     def process_input(self):
-        data = self.read_message()
-        if len(data) > 0:
-            msg_type = data[0]
-            if msg_type == "quit":
-                self.running = False
+        msg = self.reader.recv()
 
-            elif msg_type == "fetch":
-                if len(data) > 1:
-                    filename = data[1]
-                    worker = AsyncCanvasLoader(filename)
-                    while not worker.is_done():
-                        time.sleep(0.1)
-                    img_list = worker.get_image_list()
-                    self.send_data(img_list)
-                else:
-                    raise ValueError("No paths given to fetch")
+        if "quit" in msg:
+            self.running = False
+        elif "fetch" in msg:
+            filename = msg["fetch"]
+            if not filename in self.cache:
+                self.default_worker.set_job(filename)
+                while not self.default_worker.has_result():
+                    time.sleep(0.0001)
 
-            elif msg_type == "preload":
-                self.pending_cache = data[1:]
-                for f in self.pending_cache:
-                    self.requested_at[f] = time.monotonic()
+                res = self.default_worker.get_result()
+                self.cache[filename] = res
+                self.requested_at[filename] = time.monotonic()
+                self.writer.send(res)
+            else:
+                self.writer.send(self.cache[filename])
 
-            elif msg_type == "check_status":
-                self.send_data([{
-                    "workers_running": len(self.workers),
-                    "pending_cache":len(self.pending_cache),
-                    "cache_size":len(self.cache)
-                }])
+        elif "preload" in msg:
+            self.pending_cache = msg["preload"]
+            for f in self.pending_cache:
+                self.requested_at[f] = time.monotonic()
+
+        elif "check_status" in msg:
+            status_dict = {
+                "workers_running": self.active_workers,
+                "pending_cache": len(self.pending_cache),
+                "cache_size": len(self.cache),
+                "cache_remaining": self.max_cache_size - len(self.cache),
+                "done_caching": self.done_caching()
+            }
+            self.writer.send(status_dict)
 
 # Private Methods
-def background_cacher(
-    in_args, in_flag, out_args, out_flag, max_workers, max_cache_size):
+def background_cacher(worker_reader, worker_writer, num_workers, max_cache_size):
+    try:
+        b = BackgroundCacher(
+            worker_reader, worker_writer, num_workers, max_cache_size
+        )
+    except Exception as e:
+        logger.error("".join(traceback.format_exception(*sys.exc_info())))
 
-    """
-    Output from this process is input to the other process, and vice versa.
-    Therefore, this function swaps the arguments.
-    """
-    b = BackgroundCacher(
-        out_args, out_flag, in_args, in_flag, max_workers, max_cache_size
-    )
-
-class ImageCache(MessageProcess):
-    def __init__(self, max_workers=16, max_cache_size=32):
-        self.in_flag = mp.Value(ctypes.c_bool, False)
-        self.out_flag = mp.Value(ctypes.c_bool, False)
-
-        input_manager = mp.Manager()
-        self.in_args = input_manager.list()
-
-        output_manager = mp.Manager()
-        self.out_args = output_manager.list()
+class ImageCache:
+    def __init__(self, num_workers, max_cache_size=32):
+        (self.reader, worker_writer) = mp.Pipe(duplex=False)
+        (worker_reader, self.writer) = mp.Pipe(duplex=False)
+        self.worker_writer = worker_writer
 
         self.fetcher = mp.Process(target=background_cacher, args=(
-            self.in_args, self.in_flag, self.out_args, self.out_flag,
-            max_workers, max_cache_size
+            worker_reader, worker_writer, num_workers, max_cache_size
         ))
 
         self.fetcher.start()
 
     def fetch(self, path):
-        self.send_data(["fetch", path])
-        return self.read_message()
+        self.writer.send({"fetch": path})
+        return self.reader.recv()
 
     def preload(self, paths):
-        self.send_data(["preload"] + paths)
+        self.writer.send({"preload": paths})
 
     def check_status(self):
-        self.send_data(["check_status"])
-        return self.read_message()
+        self.writer.send({"check_status":0})
+
+        while not self.reader.poll():
+            time.sleep(0.0001)
+
+        msg = self.reader.recv()
+        return msg
 
     def quit(self):
-        self.send_data(["quit"])
+        self.writer.send({"quit":0})
         print("Waiting for join")
         self.fetcher.join()
         print("Join successful")
 
-p = "/home/avery/Downloads/temp/images"
-files = os.listdir(p)
-paths = [join(p, x) for x in files]
 
+def test_canvas_loader():
+    p = "/home/avery/Downloads/temp/images"
+    files = os.listdir(p)
+    paths = [join(p, x) for x in files]
 
-loader = AsyncCanvasLoader()
+    loader = AsyncCanvasLoader()
 
-for i in range(1, 5):
-    filename = paths[i]
-    loader.set_job(filename)
-    while not loader.is_idle():
-        pass
+    for i in range(1, 5):
+        filename = paths[i]
+        loader.set_job(filename)
+        while not loader.has_result():
+            pass
 
-    print("Got the result back in main")
-    res = loader.get_results()
-    pprint(res)
+        print("Got the result back in main")
+        res = loader.get_result()
+        pprint(res)
 
-print("Quitting")
-loader.quit()
+    print("Quitting")
+    loader.quit()
 
-#~ for i in range(0, 100):
-    #~ wanted_size = 60
-    #~ max_cache_size = 60
-    #~ wanted = paths[-wanted_size:]
+def test_image_cache():
+    p = "/home/avery/Downloads/temp/images"
+    files = os.listdir(p)
+    paths = [join(p, x) for x in files]
 
-    #~ print("Total paths:",len(paths))
-    #~ print("Cached paths:",len(wanted))
+    wanted_size = 20
+    max_cache_size = 30
+    wanted = paths[:wanted_size]
 
-    #~ c = ImageCache(max_workers=16, max_cache_size=max_cache_size)
-    #~ c.preload(wanted)
+    print("Total paths:",len(paths))
+    print("Cached paths:",len(wanted))
 
-    #~ while True:
-        #~ time.sleep(0.01)
-        #~ state = c.check_status()[0]
-        #~ if state["pending_cache"] == 0 and state["workers_running"] == 0:
-            #~ print("All cached")
-            #~ break
+    c = ImageCache(num_workers=4, max_cache_size=max_cache_size)
+    c.preload(wanted)
 
-    #~ c.quit()
+    while True:
+        time.sleep(0.1)
+        state = c.check_status()
+        if state["done_caching"]:
+            print("Done caching")
+            break
+
+    # Test uncached files
+    for i in range(0, 10):
+        t0 = time.time()
+        res = c.fetch(paths[i])
+        #~ pprint(res)
+        print("Fetch time cache:",time.time() - t0)
+
+    for i in range(20, 30):
+        t0 = time.time()
+        res = c.fetch(paths[i])
+        #~ pprint(res)
+        print("Fetch time uncached:",time.time() - t0)
+
+    c.quit()
+    print("All processing complete")
+
+if __name__ == "__main__":
+    test_image_cache()
+    #~ test_canvas_loader()
