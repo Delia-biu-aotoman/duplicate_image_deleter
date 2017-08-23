@@ -141,8 +141,9 @@ class BackgroundCacher:
             for worker in workers:
                 if worker.is_idle() and len(self.pending_cache) > 0:
                     self.active_workers = self.active_workers + 1
-                    target = self.pending_cache.pop()
-                    worker.set_job(target)
+                    target = self.suggest_uncached_file()
+                    if target is not None:
+                        worker.set_job(target)
 
                 if worker.has_result():
                     res = worker.get_result()
@@ -170,6 +171,15 @@ class BackgroundCacher:
 
         self.default_worker.quit()
         print("Done Cleanup..")
+
+    def suggest_uncached_file(self):
+        target = None
+        while target is None and len(self.pending_cache) > 0:
+            temp = self.pending_cache.pop()
+            if not temp in self.cache:
+                target = temp
+
+        return target
 
     def done_caching(self):
         return len(self.pending_cache) == 0 and self.active_workers == 0
@@ -208,7 +218,6 @@ class BackgroundCacher:
             }
             self.writer.send(status_dict)
 
-# Private Methods
 def background_cacher(worker_reader, worker_writer, num_workers, max_cache_size):
     try:
         b = BackgroundCacher(

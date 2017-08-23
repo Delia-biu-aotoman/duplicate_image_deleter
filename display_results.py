@@ -10,6 +10,18 @@ from pprint import pprint
 import gi
 gi.require_version('Gtk', '3.0')
 from gi.repository import Gtk, GdkPixbuf
+from image_cache import ImageCache
+
+def pil_to_pixbuf(pilimage):
+    buff = BytesIO()
+    pilimage.save(buff, 'ppm')
+    contents = buff.getvalue()
+    buff.close()
+    loader = GdkPixbuf.PixbufLoader.new_with_type('pnm')
+    loader.write(contents)
+    pixbuf = loader.get_pixbuf()
+    loader.close()
+    return pixbuf
 
 class DialogExample(Gtk.Dialog):
     def __init__(self, parent):
@@ -33,7 +45,37 @@ class Handler:
         self.page_count = len(scores)
         self.scores = scores
         self.builder = builder
+        self.cache = ImageCache(num_workers=16, max_cache_size=40)
         self.update_page()
+
+    def cache_nearby(self, pagenum):
+        filenames = []
+
+        for i in range(pagenum, pagenum + 10):
+            if i > 0 and i < len(self.scores):
+                leftfile = self.scores[i][1]
+                rightfile = self.scores[i][2]
+                filenames.append(leftfile)
+                filenames.append(rightfile)
+
+        for i in range(pagenum - 5, pagenum):
+            if i > 0 and i < len(self.scores):
+                leftfile = self.scores[i][1]
+                rightfile = self.scores[i][2]
+                filenames.append(leftfile)
+                filenames.append(rightfile)
+
+        self.cache.preload(filenames)
+
+    def get_image(self, pagenum):
+        left_file = self.scores[self.page_num][1]
+        right_file = self.scores[self.page_num][2]
+
+        left_image = self.cache.fetch(left_file)
+        right_image = self.cache.fetch(right_file)
+        left_image['pixbuf'] = pil_to_pixbuf(left_image['canvas'])
+        right_image['pixbuf'] = pil_to_pixbuf(right_image['canvas'])
+        return left_image, right_image
 
     def update_page(self):
         if(len(self.scores) == 0):
@@ -54,32 +96,22 @@ class Handler:
         left_file = self.scores[self.page_num][1]
         right_file = self.scores[self.page_num][2]
 
+        image2 = self.builder.get_object("image2")
+        image1 = self.builder.get_object("image1")
         try:
-            # read right
-            image2 = self.builder.get_object("image2")
-            pixbuf2, stats2 = load_thumbnail(right_file)
-            image2.set_from_pixbuf(pixbuf2)
+            left_image, right_image = self.get_image(self.page_num)
+            image2.set_from_pixbuf(right_image['pixbuf'])
+            image1.set_from_pixbuf(left_image['pixbuf'])
         except FileNotFoundError as e:
-            print("Expected right file is missing")
             print(e)
-            # TODO: just remove right file.
             return
 
-        try:
-            # read left
-            image1 = self.builder.get_object("image1")
-            pixbuf1, stats1 = load_thumbnail(left_file)
-            image1.set_from_pixbuf(pixbuf1)
-        except FileNotFoundError as e:
-            print("Expected left file is missing")
-            print(e)
-            # TODO: just remove left file.
-            return
+        self.cache_nearby(self.page_num)
 
         # update right
         right_description = "%s\nWidth: %d\nHeight: %d\nFilesize: %d\n" % (
-            right_file, stats2["width"], stats2["height"], stats2["filesize"])
-        if(stats2["filesize"] > stats1["filesize"]):
+            right_file, right_image["width"], right_image["height"], right_image["filesize"])
+        if(right_image["filesize"] > left_image["filesize"]):
             right_description = right_description + "(Larger)\n"
 
         right_buffer = Gtk.TextBuffer()
@@ -89,8 +121,8 @@ class Handler:
 
         # update left
         left_description = "%s\nWidth: %d\nHeight: %d\nFilesize: %d\n" % (
-            left_file, stats1["width"], stats1["height"], stats1["filesize"])
-        if(stats1["filesize"] > stats2["filesize"]):
+            left_file, left_image["width"], left_image["height"], left_image["filesize"])
+        if(left_image["filesize"] > right_image["filesize"]):
             left_description = left_description + "(Larger)\n"
 
         left_buffer = Gtk.TextBuffer()
@@ -175,6 +207,7 @@ class Handler:
             pass
 
     def onDeleteWindow(self, *args):
+        self.cache.quit()
         Gtk.main_quit(*args)
 
     def onLeftClicked(self, *args):
